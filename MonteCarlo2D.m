@@ -31,10 +31,11 @@ function results = MonteCarlo2D(varargin)
         %     (default: 12)
         % m - the 'm' constant in the pair potantial (default: 6)
         % a - the 'a' constant in the pair potatial
-        %     (default: 100)
+        %     (default: 100) (a is like 4*epsilon in the standard notation) 
         % b - the 'b' constant in the pair potantial 
-        %     user cannot set this!**
-        % T - Temperature (default: 3)
+        %     user cannot set this!** (b is like sigma in the standard
+        %     notation)
+        % T - reduced Temperature: 4*T[kelvin*bolzman factor]/a (default: 0.6)
         % r - partical radius: allways 1, user cannot sett this!
         
         % *  important note about PBC: monte carlo calulations in PBC will
@@ -142,7 +143,7 @@ function results = MonteCarlo2D(varargin)
             addOptional(p, 'Um', 6);
             addOptional(p, 'a', 100); 
             b = 2*2^(-1/6);
-            addOptional(p, 'T', 3);
+            addOptional(p, 'T', 0.6);
             r = 1;
 
             %% simulation parameters
@@ -172,7 +173,7 @@ function results = MonteCarlo2D(varargin)
             n = Results.Un;
             m = Results.Um;
             a = Results.a;
-            T = Results.T;
+            T = (Results.T)*4/a; % turn reduced tmprature to real temprature
             Nsteps = Results.Nsteps;
             dr = Results.dr;
             sampleFreq = Results.sampleFreq;
@@ -411,6 +412,7 @@ function results = MonteCarlo2D(varargin)
         
         if pressure
             pressure = calcPressure(allDist,L,n,m,a,b,T);
+            pressure = pressure*4*b^2/a; % make pressure reduced 
             results.pressure = pressure;
             results.meanPressure = my_mean(pressure);
         end
