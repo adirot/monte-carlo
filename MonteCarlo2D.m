@@ -1,5 +1,7 @@
 function results = MonteCarlo2D(varargin)
-
+        
+        %% 1 %% all T are look the same in the end....
+        
         %% Monte Carlo in 2D for Lennard-Jones like potential with hard 
         %% discs, NVT ansamble, PBC (piriodic boundary conditions)
         
@@ -411,7 +413,7 @@ function results = MonteCarlo2D(varargin)
         end
         
         if pressure
-            pressure = calcPressure(allDist,L,n,m,a,b,T);
+            pressure = calcPressure(allDist,L,n,m,a,b,T*4/a);
             pressure = pressure*4*b^2/a; % make pressure reduced 
             results.pressure = pressure;
             results.meanPressure = my_mean(pressure);
@@ -479,6 +481,7 @@ function results = MonteCarlo2D(varargin)
                 dist = zeros(N);
 
                 for j = 2:N
+                    
                       % choose random possition
                       particlesPosition(1,j) = L*rand - (L/2);
                       particlesPosition(2,j) = L*rand - (L/2);
@@ -659,7 +662,7 @@ function results = MonteCarlo2D(varargin)
             %   it is customary to make sure that dr is
             %   chosen so that half of the steps are kept. we fix dr
             %   accordindly:
-                    
+                   
                     if (moveCount/step) > 0.5
                            newdr = dr*1.05;
                     end
