@@ -1,9 +1,16 @@
 function results = MonteCarlo2D(varargin)
         
-        %% 1 %% all T are look the same in the end....
+        %% 3 %% in this version I will:
         
+
+
         %% Monte Carlo in 2D for Lennard-Jones like potential with hard 
         %% discs, NVT ansamble, PBC (piriodic boundary conditions)
+        
+        % this code and all the functions it uses are in the git
+        % repository: https://github.com/adirot/monte-carlo.git
+        % some general functions this code uses are in: 
+        % https://github.com/adirot/general-matlab-functions.git
         
         % This function runs a Monte Carlo simulation, according to the
         % Metropolis algorithm. for more information about Monte Carlo and
@@ -11,51 +18,54 @@ function results = MonteCarlo2D(varargin)
         % section 4.4
         
         % we sett a potential between pairs of particals:
-        % u = a*[(b/r)^n - (b/r)^m]
+        % u = 4*epsilon*[(sigma/r)^n - (sigma/r)^m]
         % when n = 12, m = 6 This is the Lennard-Jonse potential.
         % for more information: https://en.wikipedia.org/wiki/Lennard-Jones_potential
         
-        % The particals in this simulation have a raius sett by the user,
+        % In reduced units:
+        %       U' = 4*[(1/r')^n - (1/r')^m]
+        %       T' = kB*T/epsilon
+        %       r' = r/sigma
+        %       U' = U/epsilon
+        %       P' = P*sigma^2/epsilon
+        
+        % The particals in this simulation have a radius sett by the user,
         % and we assume hard core repultion (the particals cannot overlap).
         
         % This code can also compute the Radial distribution function. for
-        % more information, see
+        % more information about RDF, see
         % http://www2.msm.ctw.utwente.nl/sluding/TEACHING/APiE_Script_v2011.pdf
         % page 48 - "Radial distribution function"
         
         
         %% Particles system parameters
         % N - number of particles (default: 256)
-        % L - box length (default: 40)*
+        % L - box length in reduced units, user cannot set this
+        % rho - density of the particles in reduced units. (default: 0.3)
         % n - the pair potential power law in the distance 
-        %     (pair potential is u = a*[(b/r)^n - (b/r)^m] 
+        %     (pair potential is u = 4*epsilon*[(sigma/r)^n - (sigma/r)^m] 
         %     where r is the pair distance and a is some constant)
         %     (default: 12)
         % m - the 'm' constant in the pair potantial (default: 6)
-        % a - the 'a' constant in the pair potatial
-        %     (default: 100) (a is like 4*epsilon in the standard notation) 
-        % b - the 'b' constant in the pair potantial 
-        %     user cannot set this!** (b is like sigma in the standard
-        %     notation)
-        % T - reduced Temperature: 4*T[kelvin*bolzman factor]/a (default: 0.6)
-        % r - partical radius: allways 1, user cannot sett this!
+        % T - reduced Temperature (default: 0.6)
+        % r - partical radius in reduced units: allways (2^(-1/6))/2, 
+        %       user cannot sett this
         
-        % *  important note about PBC: monte carlo calulations in PBC will
-        %    only be accurate when L~6b. there are also limitations for
-        %    long range interactions, see 
-        % ** we want hard core repulsion. for this end we need to sett 
-        % b = 2*2^(-1/6), this will ensure a hard core repulsion for discs
-        % of radius 1.
+        % important note: if you change the potantial(n,m parameters) you
+        % might get a long range potantial. in this case you should
+        % consider changing the truncation of the energy calculation. 
         
         %% Simulation parameters
         % Nsteps - number of Monte carlo steps (default: 500000)
         % dr - max displacement of a particle in each step, this is only an
         %      initial value that will change during the run.
+        %       reduced units.
         %      (default: 0.5)*
-        % rCutoff - largest r for which we calculate the energy. 
-        % (recomended: 2.5*b) **
+        % rCutoff - largest r for which we calculate the energy. reduced
+        %           units.
+        %           (recomended: 2.5)
         % sampleFreq - the frequency of sampling (for ensemlse average)
-        % (recommended - 5*N to 10*N, set to 5*N)
+        %               (recommended - 5*N to 10*N, set to 5*N)
         % optimize_dr - true of false. should dr be optimized during run or
         %               kept at it's initial value (see the function
         %               'optimizedr' below for details on how optimization 
@@ -75,42 +85,38 @@ function results = MonteCarlo2D(varargin)
         %   check the acceptance rate every 100 steps, and change dr 
         %   accordingly. for more information: Allen, Tildesley computer
         %   simulation of liquids, section 1.5.2
-        % **if we want a precision of dU in the enrgy, we 
-        %   will take: rCutoff = b*(a/dU)^(1/6)
+        
         
         %% RDF parameters
         % NumOfBins - nubers of bins in RDF histogram (default: 7).
-        %   if you sett NumOfBins = [], RDF will not be calculated.
+        %           if you sett NumOfBins = [], RDF will not be calculated.
         
         %% Pressure calcuation
         % pressure - true or false, calculate the pressure or not.(defaut:
-        % false)
+        %           false). reduced units
         
         %% Display save and plot options
         % savMAT - saved file name (mat file). will be followed by a number
         %           noteing the step number saved in this file.
         %           if empty, the result will not be saved
-        % saveEvery - save to mat file every 'saveEvery' steps.
+        % maxVarSize - save to mat file every time a variable reaches 'maxVarSize'
         %           (default: 1000)
         
         %% The algorithm:
-        % 1. choose starting possitions of the particals randomly. 
-        %    this is done with a loop: in each step we choose a start 
-        %    positions and check for overlaps. if there is an overlap we 
-        %    choose a different starting possition. this is somewhat 
-        %    costly, but we only do this once.  
+        % 1. choose starting possitions of the particals. 
         % 
         % 2. Monte Carlo, Metropolis:
-        %       a. calculate the energy.
-        %       b. try to move partical: 
+        %       a. calculate the energy in reduced units.
+        %       b. try to move a partical: 
         %          choose a random particle. randomly
         %          choose a displacement within a box of size dr^2 aroud
         %          the chosen particle.
-        %       c. calculate dU - the change of energy. (during this
-        %          calculation we check for ovarlaps, if we find an overlap
-        %          the step is rejected)
+        %       c. calculate dU - the change of energy in reduced units. 
+        %          (during this calculation we check for ovarlaps, if we
+        %          find an overlap the step is rejected)
         %       d. if dU < 0 - keep step (save the new energy U + dU).
         %       e. if dU > 0 - keep step with probability exp(-dU/T). 
+        %           both dU and T are in reduced units.
         %           importante: if we rejecte a step, we save the old 
         %           energy.
         %       
@@ -118,13 +124,15 @@ function results = MonteCarlo2D(varargin)
         %       using the distances between particals already found,
         %       calculate the RDF.
         %
-        % 4. calculate the pressure: 
+        % 4. calculate the pressure in reduced units: 
         %       using the distances between particles already found,
         %       calculate the pressure. according to the virial theoram:
-        %       PV = NT - (1/2)sum(r_ij (dU/dr)), where r_ij is the
-        %       distance between particles i,j. the sum is on all particle 
-        %       pairs, each pair is counted once. U is the pair energy, so
-        %       that: (dU/dr) = a*[-n(b/r_ij)^n/r_ij + m(b/r_ij)^m/r_ij] 
+        %       P' = rho'T' - (2*rho'/N)*sum(6(1/r'_ij)-12(1/r'_ij)), 
+        %       where r'_ij is the distance between particles i,j in 
+        %       reduced units. the sum is on all particle 
+        %       pairs, each pair is counted once. (see the note about 
+        %       reduced units in this git repository for more information:
+        %       https://github.com/adirot/monte-carlo.git
         %
         % 5. save simulation parameters every 5*N steps.
         %
@@ -133,6 +141,9 @@ function results = MonteCarlo2D(varargin)
         % 7. calculate the energy of the final configuration, just to make
         %    sure we did nothing wrong.
         
+        %% The Verelet nieghbour list
+        
+        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%
         %% Check input arguments %%
         %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -140,24 +151,22 @@ function results = MonteCarlo2D(varargin)
 
             %% system parameters
             addOptional(p, 'N', 256);
-            addOptional(p, 'L', 40);
+            addOptional(p, 'rho', 0.3);
             addOptional(p, 'Un', 12);
-            addOptional(p, 'Um', 6);
-            addOptional(p, 'a', 100); 
-            b = 2*2^(-1/6);
+            addOptional(p, 'Um', 6); 
             addOptional(p, 'T', 0.6);
-            r = 1;
+            r = (2^(-1/6))/2; %particle radius
 
             %% simulation parameters
             addOptional(p, 'Nsteps', 500000);
             addOptional(p, 'dr', 0.5);
-            addOptional(p, 'rCutoff', 6);
+            addOptional(p, 'rCutoff', 2.5);
             addOptional(p, 'sampleFreq', 5);
             addOptional(p, 'optimize_dr', true);
-            addOptional(p, 'initialConfig', 'hex');
+            addOptional(p, 'initialConfig', 'random');
             
             %% RDF parameters
-            addOptional(p, 'NumOfBins', 10);
+            addOptional(p, 'NumOfBins', 7);
             
             %% pressure calculation
             addOptional(p, 'pressure', false);
@@ -165,33 +174,36 @@ function results = MonteCarlo2D(varargin)
             %% display save and plot options
             addOptional(p, 'savMAT', 'outputMC-'); % saved file name
                         % if empty, the result will not be saved
-            addOptional(p, 'saveEvery', 1000);
+            addOptional(p, 'maxVarSize', 1000); % this option will save the 
+            % variables when they have reached the spacified size, and
+            % clear the workspace for better preformance.
 
             parse(p, varargin{:});
             Results = p.Results;
 
             N = Results.N;
-            L = Results.L;
+            rho = Results.rho;
+            L = sqrt(N/rho);
             n = Results.Un;
             m = Results.Um;
-            a = Results.a;
-            T = (Results.T)*4/a; % turn reduced tmprature to real temprature
+            T = Results.T; 
             Nsteps = Results.Nsteps;
             dr = Results.dr;
+            init_dr = dr;
             sampleFreq = Results.sampleFreq;
             NumOfBins = Results.NumOfBins;
             optimize_dr = Results.optimize_dr;
             initialConfig = Results.initialConfig;
             pressure = Results.pressure;
             savMAT = Results.savMAT;
-            saveEvery = Results.saveEvery;
+            maxVarSize = Results.maxVarSize;
             rCutoff = Results.rCutoff;
             
             results.N = Results.N;
-            results.L = Results.L;
+            results.rho = Results.rho;
+            results.L = L;
             results.n = Results.Un;
             results.m = Results.Um;
-            results.a = Results.a;
             results.T = Results.T;
             results.Nsteps = Results.Nsteps;
             results.dr = Results.dr;
@@ -200,13 +212,14 @@ function results = MonteCarlo2D(varargin)
             results.NumOfBins = Results.NumOfBins;
             results.pressure = Results.pressure;
             results.savMAT = Results.savMAT;
-            results.saveEvery = Results.saveEvery;
+            results.maxVarSize = Results.maxVarSize;
             results.rCutoff = Results.rCutoff;
-
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %% Set start possitions of the N particals %%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% Set start possitions of N particals %%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % also calculate all pair distances, in PBC
+        
         if ischar(initialConfig)
             if strcmp(initialConfig,'random')
                 % create a random initial configuration
@@ -257,7 +270,7 @@ function results = MonteCarlo2D(varargin)
             % you can plot the particles if you want, to see 
             % the initial configuration:
             
-             plotParticles(particlesPosition,L,r)
+            % plotParticles(particlesPosition,L,r)
             
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %% Run Monte Carlo simulation %%
@@ -270,10 +283,11 @@ function results = MonteCarlo2D(varargin)
 
             %% initialize parameters
             moveCount = 0; % counts eccepted steps
-            allU = zeros(1,floor(Nsteps/(sampleFreq*N))); %the energy in every sample
-            allDist = zeros(N,N,floor(Nsteps/(sampleFreq*N)));%the distances in every sample
-            allCoords = zeros(2,N,floor(Nsteps/(sampleFreq*N)));%the coordinates in every sample
+            allU = zeros(1,maxVarSize); %the energy in every sample
+            allDist = zeros(N,N,maxVarSize);%the distances in every sample
+            allCoords = zeros(2,N,maxVarSize);%the coordinates in every sample
             t = 0; % allU index
+            fileNameList = {};
             
             ec1 = 0 ; ec2 = 0; ec3 = 0; 
             displace = [];
@@ -293,7 +307,7 @@ function results = MonteCarlo2D(varargin)
                                 
                     end
        
-                    %% move a partical (don't allow overlaps,set PBC)
+                    %% move a particale (don't allow overlaps,set PBC)
                                 
                             % chose particle to move
                             movedParticle = randi([1 N]);
@@ -360,21 +374,53 @@ function results = MonteCarlo2D(varargin)
                     %moveCount/step
                     if (mod(step,100) == 0)&&((moveCount/step)~=0.5...
                             &&optimize_dr)
-                         
+                            
                             dr = optimizedr;
                             if dr > L/2 || dr < L*0.0001
                                 % Display an error message
                                 disp(dr);
-                                result.dr = dr;
-                                disp('you should consider turning off the optimize_dr option - dr became too large or too small');
-                                return
+                                results.dr = dr;
+                                disp('you should consider turning off the optimize_dr option - dr became too large or too small. the function will tun off optimize_dr now');
+                                
+                                % automaticly turns off
+                                % dr_optimitation:
+                                dr = init_dr;
+                                optimize_dr = false;
+                                results.commet = 'optimize_dr have been turned off'
+                                
                             end
                                 
                     end
                         
-                    %% save to mat file
-                    if mod(step,saveEvery) == 0
-                            saveToMat;
+                    %% save to mat file, clear veriables for better 
+                    %% preformance, Calculate ensamble avrages
+                    if t == maxVarSize
+                            
+                            t = 0;
+                            
+                            %% Calculate ensamble avrages %%
+
+                                if ~isempty(NumOfBins)
+                                    % calculate RDF: 
+                                    % bins is the x axis of the RDF. histo is the y axis, for all
+                                    % samples. each  column in "histo" is a sample (so if you want
+                                    % to plot sample 10, you use: plot(bins,histo(:,10))
+
+                                    [bins,histo] = RDF(allDist,L,NumOfBins);
+                                    results.bins = bins;
+                                    results.histo = histo;
+                                end
+
+                                if pressure
+                                    allPressure = ...
+                                        calcPressure(allDist,rho,n,m,T); 
+                                    results.allPressure = allPressure;
+                                end
+                                
+                                if ~isempty(savMAT)
+                                    saveToMat(step,maxVarSize,savMAT);
+                                end
+                                
                     end
                     
             end
@@ -392,35 +438,61 @@ function results = MonteCarlo2D(varargin)
             
             results.displace = displace;
             results.displacedInd = displacedInd;
-            
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
+            results.fileNameList = fileNameList;
+                
         %% Calculate ensamble avrages %%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        len = length(fileNameList);
+        
+        allU = zeros(1,len);
+        for ii = 0:(len-1)
+              mat = matfile(fileNameList{1,ii+1});
+              allU(1,(1:maxVarSize)+ii*maxVarSize) = mat.allU;
+        end
+        results.meanU = my_mean(allU);
         
         if ~isempty(NumOfBins)
             % calculate RDF: 
             % bins is the x axis of the RDF. histo is the y axis, for all
             % samples. each  column in "histo" is a sample (so if you want
             % to plot sample 10, you use: plot(bins,histo(:,10))
-            [bins,histo] = RDF(allDist,L,NumOfBins);
-
+               
+            bins = mat.bins;
+            histo = zeros(length(bins),len);
+            for ii = 0:(len-1)
+                mat = matfile(fileNameList{1,ii+1});
+                histo(:,(1:maxVarSize)+ii*maxVarSize) = mat.histo;
+            end
+            
             % mean RDF
             meanHisto = mean(histo,2);
             
             results.bins = bins;
             results.histo = histo;
             results.meanHisto = meanHisto;
+            clear histo;
+            
         end
         
         if pressure
-            pressure = calcPressure(allDist,L,n,m,a,b,T*4/a);
-            pressure = pressure*4*b^2/a; % make pressure reduced 
-            results.pressure = pressure;
-            results.meanPressure = my_mean(pressure);
+            
+            allPressure = zeros(1,len);
+            for ii = 0:(len-1)
+                mat = matfile(fileNameList{1,ii+1});
+                allPressure(:,(1:maxVarSize)+ii*maxVarSize)...
+                    = mat.allPressure;
+            end
+            
+            results.allPressure = allPressure;
+            results.meanPressure = my_mean(allPressure);
+            
         end
         
-        results.meanU = my_mean(allU);
         
+        if ~isempty(savMAT)
+            save(savMAT);
+        end
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %% Functions used in this code %%
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -607,10 +679,11 @@ function results = MonteCarlo2D(varargin)
     
         function U = pairU(dist)
             % input is a row vector of all pair distances
-            % calculates the energy according to the pair potantial.
+            % calculates the reduced energy according to the pair potantial.
             % U is the total energy, u are the energies of each pair
+            
                 dist1 = dist(dist < rCutoff);
-                u = a*(((b./dist1).^n)-((b./dist1).^m));
+                u = 4*(((1./dist1).^n)-((1./dist1).^m));
                 U = sum(u);
         end
     
@@ -673,15 +746,28 @@ function results = MonteCarlo2D(varargin)
 
         end
 
-        function saveToMat
+        function saveToMat(step,maxVarSize,savMAT)
             
-            if ~isempty(savMAT)
-                    l = floor(step/saveEvery);
-                    fileName = strcat(savMAT,num2str((l-1)*saveEvery),'-',...
-                                    num2str(l*saveEvery));
-                    save(fileName);
-            end
-            
+		    fileInd = (step/(sampleFreq*N))/maxVarSize;		
+                    fileName = strcat(savMAT,num2str((fileInd-1)*maxVarSize),'-',...
+                                    num2str(fileInd*maxVarSize));
+                    mat = matfile(fileName,'Writable',true);
+                    fileNameList{1,fileInd} = fileName;
+                    mat.results = results;
+                    mat.allU = allU;
+                    mat.allDist = allDist;
+                    mat.allCoords = allCoords;
+                    
+                    if ~isempty(NumOfBins)
+                        mat.bins = results.bins;
+                        mat.histo = results.histo;
+                        clear histo;
+                    end
+                    
+                    if pressure
+                        mat.allPressure = allPressure;
+                        clear allPressure;
+                    end
         end
         
     function meanProp = my_mean(prop)
@@ -689,13 +775,13 @@ function results = MonteCarlo2D(varargin)
         % output: meanProp(i) is the mean of all the values of property on
         % steps 1 to i.
             
-            len = length(prop);
-            meanProp = zeros(1,len); 
+            lenProp = length(prop);
+            meanProp = zeros(1,lenProp); 
             meanProp(1) = prop(1);
-            for i = 2:len
+            for i = 2:lenProp
                 meanProp(i) = meanProp(i-1) + prop(i);
             end
-            one2len = 1:len;
+            one2len = 1:lenProp;
             meanProp = meanProp./one2len;
     end
 end
