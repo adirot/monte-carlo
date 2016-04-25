@@ -164,6 +164,8 @@ function results = MonteCarlo2D(varargin)
             addOptional(p, 'sampleFreq', 5);
             addOptional(p, 'optimize_dr', true);
             addOptional(p, 'initialConfig', 'random');
+            addOptional(p, 'startFromOldRun_fileName', []);
+            
             
             %% RDF parameters
             addOptional(p, 'NumOfBins', 7);
@@ -194,6 +196,7 @@ function results = MonteCarlo2D(varargin)
             NumOfBins = Results.NumOfBins;
             optimize_dr = Results.optimize_dr;
             initialConfig = Results.initialConfig;
+            startFromOldRun_fileName = Results.startFromOldRun_fileName;
             pressure = Results.pressure;
             savMAT = Results.savMAT;
             maxVarSize = Results.maxVarSize;
@@ -237,6 +240,34 @@ function results = MonteCarlo2D(varargin)
                          results = [];
                          return
                      end
+                else
+                    if ~isempty(startFromOldRun_fileName)
+                        
+                        % get old run data
+                        load(startFromOldRun_fileName);
+                        N = results.N;
+                        rho = results.rho;
+                        L = sqrt(N/rho);
+                        n = results.Un;
+                        m = results.Um;
+                        T = results.T; 
+                        dr = results.dr;
+                        init_dr = dr;
+                        sampleFreq = results.sampleFreq;
+                        NumOfBins = results.NumOfBins;
+                        optimize_dr = results.optimize_dr;
+                        initialConfig = results.initialConfig;
+                        pressure = results.pressure;
+                        savMAT = results.savMAT;
+                        maxVarSize = results.maxVarSize;
+                        rCutoff = results.rCutoff;
+                        
+                        % get last particles configuration
+                        particlesPosition = particlesPosition(:,:,end);
+                        startStep = results.Nsteps + 1;
+                        Nsteps = results.Nsteps + Nsteps;
+                    end
+                        
                 end
             end
         else
@@ -282,20 +313,23 @@ function results = MonteCarlo2D(varargin)
             U = pairU(d);
 
             %% initialize parameters
-            moveCount = 0; % counts eccepted steps
+            if ~isempty(startFromOldRun_fileName)
+                moveCount = 0; % counts eccepted steps
+                fileNameList = {};
+            end
             allU = zeros(1,maxVarSize); %the energy in every sample
             allDist = zeros(N,N,maxVarSize);%the distances in every sample
             allCoords = zeros(2,N,maxVarSize);%the coordinates in every sample
             t = 0; % allU index
-            fileNameList = {};
+            
             
             ec1 = 0 ; ec2 = 0; ec3 = 0; 
             displace = [];
             displacedInd = [];
             
             %% start Monte Carlo
-            for step = 1:Nsteps
-                    
+            for step = startStep:Nsteps
+                    step
                     %% accumulate averages, save distances and coordinates
                     if  mod(step,sampleFreq*N) == 0
                         
@@ -439,6 +473,8 @@ function results = MonteCarlo2D(varargin)
             results.displace = displace;
             results.displacedInd = displacedInd;
             results.fileNameList = fileNameList;
+            results.lastParticlesPosition = particlesPosition(:,:,end);
+            results.moveCount = moveCount;
                 
         %% Calculate ensamble avrages %%
         
